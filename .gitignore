@@ -1,0 +1,21 @@
+.env
+backend/.env
+**/.env
+.venv/
+**/.venv/
+__pycache__/
+**/__pycache__/
+.pytest_cache/
+backend/private_storage/
+# Frontend dependencies and build output
+frontend/node_modules/
+frontend/dist/
+
+# Python compiled files
+*.py[cod]
+
+# Local editor settings
+.vscode/
+
+# Optional environment template
+!.env.example

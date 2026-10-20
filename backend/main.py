@@ -121,33 +121,45 @@ def register(
     }
 
 
+
 @app.post("/auth/login")
 def login(
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: Session = Depends(get_db),
 ):
-    user = (
-        db.query(models.User)
-        .filter(models.User.username == form_data.username)
-        .first()
-    )
-
-    if not user or not verify_password(
-        form_data.password,
-        user.password_hash,
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect username or password",
-            headers={"WWW-Authenticate": "Bearer"},
+    try:
+        user = (
+            db.query(models.User)
+            .filter(models.User.username == form_data.username)
+            .first()
         )
 
-    token = create_access_token(user.id)
+        if not user or not verify_password(
+            form_data.password,
+            user.password_hash,
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Incorrect username or password",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
 
-    return {
-        "access_token": token,
-        "token_type": "bearer",
-    }
+        token = create_access_token(user.id)
+
+        return {
+            "access_token": token,
+            "token_type": "bearer",
+        }
+
+    except HTTPException:
+        raise
+    except Exception:
+        import logging
+        logging.exception("Unexpected error in /auth/login")
+        raise HTTPException(
+            status_code=500,
+            detail="Login failed due to a server error. Check backend logs.",
+        )
 
 @app.get("/auth/me")
 def get_my_profile(

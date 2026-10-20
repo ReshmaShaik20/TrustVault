@@ -4,7 +4,11 @@ import uuid
 from pathlib import Path
 
 # Resolve the storage directory relative to this Python file.
-STORAGE_DIR = Path(__file__).resolve().parent / "private_storage"
+STORAGE_DIR = Path(os.getenv(
+        "TRUSTVAULT_STORAGE_DIR",
+        str(Path(__file__).resolve().parent / "private_storage"),
+    )
+).resolve()
 
 
 def save_upload(file_content: bytes) -> str:

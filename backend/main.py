@@ -293,7 +293,7 @@ def list_documents(
     shared_document_ids = (
         db.query(models.DocumentGrant.document_id)
         .filter(models.DocumentGrant.user_id == current_user.id)
-        .subquery()
+        
     )
 
     query = db.query(models.Document).filter(

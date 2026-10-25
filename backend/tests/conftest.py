@@ -1,7 +1,8 @@
 
 import os
-
+from pathlib import Path
 import pytest
+from dotenv import load_dotenv
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -11,7 +12,7 @@ import database
 import storage
 from main import app
 
-
+load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 @pytest.fixture
 def client(tmp_path, monkeypatch):
     # Tests must use the dedicated test database.
@@ -58,6 +59,6 @@ def client(tmp_path, monkeypatch):
         with TestClient(app) as test_client:
             yield test_client
     finally:
-        app.dependency_overrides.clear()
+        app.dependency_overrides.pop(database.get_db, None)
         models.Base.metadata.drop_all(bind=test_engine)
         test_engine.dispose()

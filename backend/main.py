@@ -3,7 +3,8 @@ from audit import log_audit_event
 from audit import verify_audit_chain
 import os
 from pathlib import Path
-
+from datetime import date
+from typing import Literal, Optional
 from fastapi import UploadFile, File, Form
 from fastapi import HTTPException, Query
 from sqlalchemy.exc import SQLAlchemyError
@@ -51,6 +52,11 @@ def get_current_user(
 
     if user is None:
         raise credentials_error
+    if user.approval_status == "pending":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Your document owner account is awaiting admin approval.",
+        )
 
     return user
 app = FastAPI(
@@ -69,7 +75,11 @@ app.add_middleware(
 
 class RegisterRequest(BaseModel):
     username: str = Field(min_length=3, max_length=100)
-    password: str = Field(min_length=12, max_length=128)
+    email: str = Field(min_length=5, max_length=254)
+    password: str = Field(min_length=8, max_length=128)
+    full_name: Optional[str] = None
+    date_of_birth: Optional[date] = None
+    requested_role: Literal["viewer", "document_owner"] = "viewer"
 
 class ShareRequest(BaseModel):
     username: str = Field(min_length=3, max_length=100)
@@ -89,17 +99,28 @@ def register(
     db: Session = Depends(get_db),
 ):
     username = request.username.strip()
-
+    email = request.email.strip().lower()
     if len(username) < 3:
         raise HTTPException(
             status_code=400,
             detail="Username must contain at least 3 characters",
         )
-
+    if request.date_of_birth:
+        today = date.today()
+        age = today.year - request.date_of_birth.year - (
+            (today.month, today.day) < (request.date_of_birth.month, request.date_of_birth.day)
+        )
+        if age < 18:
+            raise HTTPException(status_code=400, detail="You must be at least 18 years old.")
     user = models.User(
         username=username,
+        email=email,
         password_hash=hash_password(request.password),
+        full_name=request.full_name,
+        date_of_birth=request.date_of_birth,
         role="user",
+        requested_role=request.requested_role,
+        approval_status="approved" if request.requested_role == "viewer" else "pending",
     )
 
     db.add(user)
@@ -128,10 +149,14 @@ def login(
     db: Session = Depends(get_db),
 ):
     try:
+        login_id = form_data.username.strip()
         user = (
             db.query(models.User)
-            .filter(models.User.username == form_data.username)
-            .first()
+            .filter(
+                (models.User.username == login_id)
+                | (models.User.email == login_id.lower())
+        )
+        .first()
         )
 
         if not user or not verify_password(
@@ -143,7 +168,11 @@ def login(
                 detail="Incorrect username or password",
                 headers={"WWW-Authenticate": "Bearer"},
             )
-
+        if user.approval_status != "approved":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Your document owner account is awaiting admin approval.",
+            )
         token = create_access_token(user.id)
 
         return {
@@ -168,7 +197,11 @@ def get_my_profile(
     return {
         "id": current_user.id,
         "username": current_user.username,
+        "email": current_user.email,
+        "full_name": current_user.full_name,
         "role": current_user.role,
+        "requested_role": current_user.requested_role,
+        "approval_status": current_user.approval_status,
     }
 
 def log_rejected_upload(
@@ -851,4 +884,87 @@ def audit_verify(
             if is_valid
             else "Audit chain integrity check failed"
         ),
+    }
+
+@app.get("/admin/pending-requests")
+def get_pending_requests(
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if current_user.role != "admin":
+        raise HTTPException(
+            status_code=403,
+            detail="Administrator access required",
+        )
+
+    requests = (
+        db.query(models.User)
+        .filter(
+            models.User.approval_status == "pending",
+            models.User.requested_role == "document_owner",
+        )
+        .order_by(models.User.id.asc())
+        .all()
+    )
+
+    return [
+        {
+            "id": request.id,
+            "username": request.username,
+            "full_name": request.full_name,
+            "email": request.email,
+            "requested_role": request.requested_role,
+            "approval_status": request.approval_status,
+            "created_at": request.created_at,
+        }
+        for request in requests
+    ]
+
+@app.patch("/admin/pending-requests/{user_id}")
+def review_pending_request(
+    user_id: int,
+    decision: str,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if current_user.role != "admin":
+        raise HTTPException(
+            status_code=403,
+            detail="Administrator access required",
+        )
+
+    if decision not in ("approve", "reject"):
+        raise HTTPException(
+            status_code=400,
+            detail="Decision must be 'approve' or 'reject'",
+        )
+
+    requested_user = db.get(models.User, user_id)
+
+    if requested_user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if (
+        requested_user.approval_status != "pending"
+        or requested_user.requested_role != "document_owner"
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="No pending document owner request for this user",
+        )
+
+    if decision == "approve":
+        requested_user.role = "document_owner"
+        requested_user.approval_status = "approved"
+    else:
+        requested_user.approval_status = "rejected"
+
+    db.commit()
+    db.refresh(requested_user)
+
+    return {
+        "id": requested_user.id,
+        "username": requested_user.username,
+        "role": requested_user.role,
+        "approval_status": requested_user.approval_status,
     }

@@ -6,7 +6,9 @@ from main import app
 def register_user(client, username, password):
     return client.post(
         "/auth/register",
-        json={"username": username, "password": password},
+        json={"username": username,
+              "email": f"{username}@example.com",
+              "password": password},
     )
 
 

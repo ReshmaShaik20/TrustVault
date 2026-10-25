@@ -1,6 +1,6 @@
 
 from datetime import datetime, timezone
-
+from sqlalchemy import Column, String, Date
 from sqlalchemy import (
     DateTime,
     ForeignKey,
@@ -26,6 +26,9 @@ class User(Base):
     username: Mapped[str] = mapped_column(
         String(100), unique=True, index=True, nullable=False
     )
+    email: Mapped[str | None] = mapped_column(
+        String(254), unique=True, index=True, nullable=True
+    )
     password_hash: Mapped[str] = mapped_column(
         String(255), nullable=False
     )
@@ -35,6 +38,10 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now, nullable=False
     )
+    full_name = Column(String(100), nullable=True)
+    date_of_birth = Column(Date, nullable=True)
+    requested_role = Column(String(20), nullable=False, default="viewer", server_default="viewer")
+    approval_status = Column(String(20), nullable=False, default="approved", server_default="approved")
 
 
 class Document(Base):

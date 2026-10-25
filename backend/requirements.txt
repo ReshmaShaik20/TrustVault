@@ -1,4 +1,4 @@
-
+psycopg[binary]==3.3.6
 fastapi
 uvicorn[standard]
 sqlalchemy

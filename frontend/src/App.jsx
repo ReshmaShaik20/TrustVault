@@ -333,6 +333,16 @@ const visibleDocuments =
              requested_role: accountType, 
             }),
         });
+        if (accountType === "document_owner") {
+          setMode("login");
+          setMessage(
+            "Account created. An admin must approve your Document Owner request before you can sign in."
+          );
+          setPassword("");
+          setConfirmPassword("");
+          setLoading(false);
+          return;
+        }
       }
       const form = new URLSearchParams();
       form.set("username", username);

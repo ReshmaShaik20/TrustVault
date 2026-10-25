@@ -59,14 +59,17 @@ def get_current_user(
         )
 
     return user
+Base.metadata.create_all(bind=engine)
 app = FastAPI(
     title="TrustVault API",
     description="Secure document sharing and audit platform",
     version="0.1.0",
 )
+ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "http://localhost:5173").split(",")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -118,7 +121,7 @@ def register(
         password_hash=hash_password(request.password),
         full_name=request.full_name,
         date_of_birth=request.date_of_birth,
-        role="user",
+        role="viewer",
         requested_role=request.requested_role,
         approval_status="approved" if request.requested_role == "viewer" else "pending",
     )
@@ -230,6 +233,11 @@ def upload_document(
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    if current_user.role not in ("document_owner", "admin"):
+        raise HTTPException(
+            status_code=403,
+            detail="Your account is not approved to upload documents.",
+        )
     MAX_FILE_SIZE = 5 * 1024 * 1024  # 5 MB
     ALLOWED_EXTENSIONS = {".pdf", ".txt", ".png", ".jpg", ".jpeg", ".docx"}
 
